@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="detection-form">
+    <h2>Vérifier une URL ou Email</h2>
+    <form method="POST" action="{{ url_for('detect') }}" id="detection-form">
+        <div class="form-group">
+            <label for="url">Entrez l'URL ou l'adresse email à analyser:</label>
+            <input type="text" id="url" name="url" placeholder="https://exemple.com ou contact@exemple.com" required>
+        </div>
+        <button type="submit" class="btn">Analyser</button>
+    </form>
+    
+    <div class="examples">
+        <h3>Exemples à tester :</h3>
+        <ul>
+            <li>URL suspecte : http://facebook-verify-login.com</li>
+            <li>Email suspect : security@paypal-security.com</li>
+            <li>URL normale : https://www.google.com</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

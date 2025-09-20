@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="results">
+    <h2>Résultats de l'analyse</h2>
+    
+    <div class="url-display">
+        <strong>Analyse de :</strong> {{ url }}
+        <button class="copy-url" data-url="{{ url }}">Copier</button>
+    </div>
+    
+    <div class="verdict {% if is_phishing %}danger{% else %}safe{% endif %}">
+        <h3>Verdict: {% if is_phishing %}⚠️ DANGEREUX - Phishing détecté{% else %}✅ SÉCURISÉ - Aucune menace détectée{% endif %}</h3>
+    </div>
+    
+    <div class="analysis-details">
+        <h4>Détails de l'analyse :</h4>
+        <ul>
+            {% if '@' in url and '.' in url.split('@')[-1] %}
+                <li>Type: Adresse email</li>
+                <li>Analyse: Vérification des domaines suspects et motifs de phishing</li>
+            {% else %}
+                <li>Type: URL</li>
+                <li>Analyse: Vérification des IPs, motifs suspects et structure d'URL</li>
+            {% endif %}
+        </ul>
+    </div>
+    
+    {% if is_phishing %}
+    <div class="recommendations danger">
+        <h4>🚨 Recommandations de sécurité :</h4>
+        <ul>
+            <li>Ne cliquez pas sur ce lien ou ne répondez pas à cet email</li>
+            <li>Ne fournissez aucune information personnelle</li>
+            <li>Signalez cette tentative aux autorités compétentes</li>
+            <li>Vérifiez l'authenticité via des canaux officiels</li>
+        </ul>
+    </div>
+    {% else %}
+    <div class="recommendations safe">
+        <h4>✅ Conseils de sécurité :</h4>
+        <ul>
+            <li>Restez vigilant face aux demandes d'informations personnelles</li>
+            <li>Vérifiez toujours l'URL avant de saisir des identifiants</li>
+            <li>Utilisez l'authentification à deux facteurs quand possible</li>
+        </ul>
+    </div>
+    {% endif %}
+    
+    <a href="{{ url_for('detect') }}" class="btn">Vérifier un autre lien/email</a>
+</div>
+{% endblock %}

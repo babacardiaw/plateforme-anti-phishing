@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="hero">
+    <h2>Protégez-vous contre le phishing</h2>
+    <p>Notre outil analyse les URLs suspectes pour détecter les tentatives de phishing</p>
+    <a href="{{ url_for('detect') }}" class="btn">Vérifier une URL</a>
+</div>
+
+<div class="info-section">
+    <h3>Qu'est-ce que le phishing?</h3>
+    <p>Le phishing est une technique utilisée par les cybercriminels pour voler vos informations personnelles en se faisant passer pour des entités légitimes.</p>
+    
+    <h3>Comment reconnaître un phishing?</h3>
+    <ul>
+        <li>URL suspecte ou mal orthographiée</li>
+        <li>Demande d'informations personnelles</li>
+        <li>Sentiment d'urgence dans le message</li>
+        <li>Erreurs grammaticales ou orthographiques</li>
+    </ul>
+</div>
+{% endblock %}
