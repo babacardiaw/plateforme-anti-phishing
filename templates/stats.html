@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="stats-container">
+    <h2>Statistiques de la Plateforme</h2>
+    
+    <div class="stats-section">
+        <h3>Analyses d'URL</h3>
+        <p>Total des analyses: {{ url_stats[0] if url_stats else 0 }}</p>
+        <p>Phishing détecté: {{ url_stats[1] if url_stats else 0 }}</p>
+        <p>Taux de phishing: {{ "%.1f"|format(url_stats[2] if url_stats else 0) }}%</p>
+    </div>
+    
+    <div class="stats-section">
+        <h3>Quiz réalisés</h3>
+        <p>Total des quiz: {{ quiz_stats[0] if quiz_stats else 0 }}</p>
+        <p>Score moyen: {{ "%.1f"|format(quiz_stats[1] if quiz_stats else 0) }}/{{ questions|length }}</p>
+        <p>Meilleur score: {{ quiz_stats[2] if quiz_stats else 0 }}/{{ questions|length }}</p>
+    </div>
+</div>
+{% endblock %}

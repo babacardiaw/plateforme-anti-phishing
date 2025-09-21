@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="quiz-container">
+    <h2>Quiz de Sensibilisation au Phishing</h2>
+    <form method="POST" action="{{ url_for('submit_quiz') }}">
+        {% for question in questions %}
+        <div class="question">
+            <h3>Question {{ question.id }}: {{ question.question }}</h3>
+            {% for option in question.options %}
+            <label>
+                <input type="radio" name="{{ question.id }}" value="{{ loop.index0 }}">
+                {{ option }}
+            </label><br>
+            {% endfor %}
+        </div>
+        {% endfor %}
+        <button type="submit">Soumettre le Quiz</button>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="quiz-results">
+    <h2>Résultats du Quiz</h2>
+    <div class="score">Votre score: {{ score }}/{{ total }}</div>
+    
+    {% for question in questions %}
+    <div class="question-result">
+        <h3>Question {{ question.id }}: {{ question.question }}</h3>
+        <p>Votre réponse: {{ question.options[user_answers[question.id|string]|int] }}</p>
+        <p>Réponse correcte: {{ question.options[question.correct_answer] }}</p>
+        <p class="explanation">{{ question.explanation }}</p>
+    </div>
+    {% endfor %}
+    
+    <a href="{{ url_for('quiz') }}">Refaire le quiz</a>
+</div>
+{% endblock %}
