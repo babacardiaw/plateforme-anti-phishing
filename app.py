@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify
 import re
-import os
 import validators
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -38,12 +37,20 @@ def extract_features(url):
 
 def is_phishing(url):
     """Détermine si une URL ou email est potentiellement du phishing"""
-    # Si c'est un email (contient @ et .)
-    if '@' in url and '.' in url.split('@')[-1]:
+    # Validation basique pour éviter de traiter des chaînes non pertinentes
+    if not url or len(url.strip()) == 0:
+        return False
+    
+    # Si c'est un email (validation stricte)
+    if re.match(r"[^@]+@[^@]+\.[^@]+", url):
         return is_phishing_email(url)
     
-    # Sinon, c'est une URL
-    return is_phishing_url(url)
+    # Sinon, c'est une URL (validation préalable)
+    if validators.url(url):
+        return is_phishing_url(url)
+    
+    # Si ce n'est ni une URL valide ni un email valide
+    return False
 
 def is_phishing_url(url):
     """Détection de phishing pour les URLs - Version améliorée"""
@@ -142,20 +149,33 @@ def home():
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
     if request.method == 'POST':
-        # Validation de base pour la route formulaire
-        url = request.form['url'].strip()
-        if not url:
-            return render_template('detect.html', error='Veuillez entrer une URL.')
-        if not validators.url(url) and '@' not in url:  # Permet les emails
-            return render_template('detect.html', error='Le format de l\'URL est invalide.')
-        
-        is_phish = is_phishing(url)
-        return render_template('results.html', url=url, is_phishing=is_phish)
+        try:
+            url = request.form['url'].strip()
+            
+            # Validation stricte
+            if not url:
+                return render_template('detect.html', error='Veuillez entrer une URL ou un email.')
+            
+            # Validation format URL ou email
+            is_valid_url = validators.url(url)
+            is_valid_email = re.match(r"[^@]+@[^@]+\.[^@]+", url) is not None
+
+            if not (is_valid_url or is_valid_email):
+                return render_template('detect.html', error='Format invalide. Entrez une URL ou un email valide.')
+            
+            # Analyse de phishing
+            is_phish = is_phishing(url)
+            return render_template('results.html', url=url, is_phishing=is_phish)
+            
+        except Exception as e:
+            app.logger.error(f"Erreur détection: {str(e)}")
+            return render_template('detect.html', error='Une erreur est survenue lors de l\'analyse.')
+    
     return render_template('detect.html')
 
-# Route API SÉCURISÉE avec validation, rate limiting et gestion d'erreurs
+# Route API SÉCURISÉE
 @app.route('/api/detect', methods=['POST'])
-@limiter.limit("10 per minute")  # Protection contre les abus
+@limiter.limit("10 per minute")
 def api_detect():
     try:
         data = request.get_json()
@@ -168,25 +188,23 @@ def api_detect():
         if not url:
             return jsonify({'error': 'L\'URL ne peut pas être vide.'}), 400
         
-        # Validation plus poussée : soit une URL valide, soit un email
+        # Validation stricte
         is_valid_url = validators.url(url)
-        # Validation email bien plus stricte
         is_valid_email = re.match(r"[^@]+@[^@]+\.[^@]+", url) is not None
 
         if not (is_valid_url or is_valid_email):
             return jsonify({'error': 'Le format de l\'URL ou de l\'email est invalide.'}), 400
 
-        # Appel à la logique de détection
+        # Analyse
         is_phish = is_phishing(url)
         
         return jsonify({
             'url': url, 
             'is_phishing': is_phish,
-            'message': 'Attention! Phishing détecté!' if is_phish else 'Ce site est sécurisé.'
+            'message': '⚠️ Attention! Phishing détecté!' if is_phish else '✅ Ce site est sécurisé.'
         })
 
     except Exception as e:
-        # Gestion sécurisée des erreurs
         app.logger.error(f"Erreur API: {str(e)}")
         return jsonify({'error': 'Un problème est survenu lors de l\'analyse.'}), 500
 
