@@ -1,13 +1,13 @@
 from flask import Flask, render_template, request, jsonify
 import re
 import os
-import validators  # <-- AJOUT 1: Pour la validation des URLs
-from flask_limiter import Limiter  # <-- AJOUT 2: Pour le rate limiting
-from flask_limiter.util import get_remote_address  # <-- AJOUT 3: Pour le rate limiting
+import validators
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 app = Flask(__name__)
 
-# --- AJOUT 4: Configuration du Rate Limiting ---
+# Configuration du Rate Limiting
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -15,7 +15,7 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# Fonctions de détection de phishing (VOTRE CODE - CONSERVÉ)
+# Fonctions de détection de phishing
 def extract_features(url):
     """Extrait les caractéristiques d'une URL pour la détection de phishing"""
     features = {}
@@ -31,7 +31,7 @@ def extract_features(url):
     features['has_multiple_subdomains'] = 1 if url.count('.') > 2 else 0
     features['has_ip'] = 1 if re.match(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', url) else 0
     
-    # Nomme de redirections
+    # Nombre de redirections
     features['redirects'] = url.count('//')
     
     return features
@@ -58,7 +58,6 @@ def is_phishing_url(url):
     if len(url) > 75:
         return True
     
-    # === NOUVEAUX PATTERNS AJOUTÉS ===
     # Détection des URLs raccourcies suspectes
     shortener_domains = [r'bit\.ly', r'tinyurl', r'goo\.gl', r't\.co', r'ow\.ly', r'is\.gd']
     for domain in shortener_domains:
@@ -92,7 +91,6 @@ def is_phishing_url(url):
     # Détection des encodages suspects
     if '%' in url and len([c for c in url if c == '%']) > 2:
         return True
-    # ================================
     
     # Vérification des motifs suspects dans les URLs (optimisée)
     suspicious_patterns = [
@@ -144,7 +142,7 @@ def home():
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
     if request.method == 'POST':
-        # --- AJOUT 5: Validation de base pour la route formulaire ---
+        # Validation de base pour la route formulaire
         url = request.form['url'].strip()
         if not url:
             return render_template('detect.html', error='Veuillez entrer une URL.')
@@ -155,7 +153,7 @@ def detect():
         return render_template('results.html', url=url, is_phishing=is_phish)
     return render_template('detect.html')
 
-# --- AJOUT 6: Route API SÉCURISÉE avec validation, rate limiting et gestion d'erreurs ---
+# Route API SÉCURISÉE avec validation, rate limiting et gestion d'erreurs
 @app.route('/api/detect', methods=['POST'])
 @limiter.limit("10 per minute")  # Protection contre les abus
 def api_detect():
@@ -172,12 +170,13 @@ def api_detect():
         
         # Validation plus poussée : soit une URL valide, soit un email
         is_valid_url = validators.url(url)
-        is_valid_email = '@' in url and '.' in url.split('@')[-1]  # Validation email basique
-        
+        # Validation email bien plus stricte
+        is_valid_email = re.match(r"[^@]+@[^@]+\.[^@]+", url) is not None
+
         if not (is_valid_url or is_valid_email):
             return jsonify({'error': 'Le format de l\'URL ou de l\'email est invalide.'}), 400
 
-        # Appel à VOTRE logique de détection
+        # Appel à la logique de détection
         is_phish = is_phishing(url)
         
         return jsonify({
@@ -192,4 +191,4 @@ def api_detect():
         return jsonify({'error': 'Un problème est survenu lors de l\'analyse.'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=False, host='0.0.0.0', port=5000)  # <- debug=FALSE pour la production
+    app.run(debug=False, host='0.0.0.0', port=5000)
