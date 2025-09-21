@@ -1,15 +1,21 @@
 from flask import Flask, render_template, request, jsonify
-import pandas as pd
 import re
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import TfidfVectorizer
-import joblib
 import os
+import validators  # <-- AJOUT 1: Pour la validation des URLs
+from flask_limiter import Limiter  # <-- AJOUT 2: Pour le rate limiting
+from flask_limiter.util import get_remote_address  # <-- AJOUT 3: Pour le rate limiting
 
 app = Flask(__name__)
 
-# Fonctions de détection de phishing
+# --- AJOUT 4: Configuration du Rate Limiting ---
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://",
+)
+
+# Fonctions de détection de phishing (VOTRE CODE - CONSERVÉ)
 def extract_features(url):
     """Extrait les caractéristiques d'une URL pour la détection de phishing"""
     features = {}
@@ -25,10 +31,11 @@ def extract_features(url):
     features['has_multiple_subdomains'] = 1 if url.count('.') > 2 else 0
     features['has_ip'] = 1 if re.match(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', url) else 0
     
-    # Nombre de redirections
+    # Nomme de redirections
     features['redirects'] = url.count('//')
     
     return features
+
 def is_phishing(url):
     """Détermine si une URL ou email est potentiellement du phishing"""
     # Si c'est un email (contient @ et .)
@@ -137,18 +144,52 @@ def home():
 @app.route('/detect', methods=['GET', 'POST'])
 def detect():
     if request.method == 'POST':
-        url = request.form['url']
+        # --- AJOUT 5: Validation de base pour la route formulaire ---
+        url = request.form['url'].strip()
+        if not url:
+            return render_template('detect.html', error='Veuillez entrer une URL.')
+        if not validators.url(url) and '@' not in url:  # Permet les emails
+            return render_template('detect.html', error='Le format de l\'URL est invalide.')
+        
         is_phish = is_phishing(url)
         return render_template('results.html', url=url, is_phishing=is_phish)
     return render_template('detect.html')
 
+# --- AJOUT 6: Route API SÉCURISÉE avec validation, rate limiting et gestion d'erreurs ---
 @app.route('/api/detect', methods=['POST'])
+@limiter.limit("10 per minute")  # Protection contre les abus
 def api_detect():
-    data = request.get_json()
-    url = data.get('url', '')
-    is_phish = is_phishing(url)
-    return jsonify({'url': url, 'is_phishing': is_phish})
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Données JSON requises.'}), 400
+
+        url = data.get('url', '').strip()
+        
+        # Validation
+        if not url:
+            return jsonify({'error': 'L\'URL ne peut pas être vide.'}), 400
+        
+        # Validation plus poussée : soit une URL valide, soit un email
+        is_valid_url = validators.url(url)
+        is_valid_email = '@' in url and '.' in url.split('@')[-1]  # Validation email basique
+        
+        if not (is_valid_url or is_valid_email):
+            return jsonify({'error': 'Le format de l\'URL ou de l\'email est invalide.'}), 400
+
+        # Appel à VOTRE logique de détection
+        is_phish = is_phishing(url)
+        
+        return jsonify({
+            'url': url, 
+            'is_phishing': is_phish,
+            'message': 'Attention! Phishing détecté!' if is_phish else 'Ce site est sécurisé.'
+        })
+
+    except Exception as e:
+        # Gestion sécurisée des erreurs
+        app.logger.error(f"Erreur API: {str(e)}")
+        return jsonify({'error': 'Un problème est survenu lors de l\'analyse.'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-application = app
+    app.run(debug=False, host='0.0.0.0', port=5000)  # <- debug=FALSE pour la production
