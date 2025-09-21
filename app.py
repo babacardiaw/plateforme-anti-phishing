@@ -1,10 +1,25 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import re
 import validators
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import psycopg2
+from psycopg2 import sql
+import os
+from datetime import datetime
 
 app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Configuration de la base de données
+def get_db_connection():
+    return psycopg2.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        database=os.environ.get('DB_NAME', 'phishing_db'),
+        user=os.environ.get('DB_USER', 'postgres'),
+        password=os.environ.get('DB_PASSWORD', ''),
+        port=os.environ.get('DB_PORT', '5432')
+    )
 
 # Configuration du Rate Limiting
 limiter = Limiter(
@@ -13,6 +28,41 @@ limiter = Limiter(
     default_limits=["200 per day", "50 per hour"],
     storage_uri="memory://",
 )
+
+# Initialisation de la base de données
+def init_db():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Table des résultats de quiz
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_results (
+                id SERIAL PRIMARY KEY,
+                user_ip VARCHAR(45),
+                score INTEGER NOT NULL,
+                total_questions INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Table des soumissions d'URL
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS url_submissions (
+                id SERIAL PRIMARY KEY,
+                url TEXT NOT NULL,
+                is_phishing BOOLEAN NOT NULL,
+                user_ip VARCHAR(45),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Base de données initialisée avec succès")
+    except Exception as e:
+        print(f"Erreur initialisation DB: {e}")
 
 # Fonctions de détection de phishing
 def extract_features(url):
@@ -141,6 +191,39 @@ def is_phishing_email(email):
             
     return False
 
+# Données du quiz
+QUIZ_QUESTIONS = [
+    {
+        'id': 1,
+        'question': 'Un email de votre banque vous demandant vos identifiants est-il suspect ?',
+        'options': ['Oui, toujours', 'Non, si ça vient de ma banque', 'Seulement si il y a des fautes'],
+        'correct_answer': 0,
+        'explanation': 'Les banques ne demandent jamais vos identifiants par email.'
+    },
+    {
+        'id': 2,
+        'question': 'Quel élément dans une URL peut indiquer un phishing ?',
+        'options': [
+            'La présence de "https://"',
+            'Un nom de domaine très long avec des tirets',
+            'L\'absence de favicon'
+        ],
+        'correct_answer': 1,
+        'explanation': 'Les URLs avec de nombreux tirets imitent souvent des domaines légitimes.'
+    },
+    {
+        'id': 3,
+        'question': 'Que faire si vous recevez un email suspect ?',
+        'options': [
+            'Le supprimer immédiatement',
+            'Cliquer sur les liens pour vérifier',
+            'Signaler comme phishing et ne pas cliquer'
+        ],
+        'correct_answer': 2,
+        'explanation': 'Il faut signaler le phishing et éviter tout clic.'
+    }
+]
+
 # Routes de l'application
 @app.route('/')
 def home():
@@ -165,6 +248,21 @@ def detect():
             
             # Analyse de phishing
             is_phish = is_phishing(url)
+            
+            # Sauvegarde en base de données
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO url_submissions (url, is_phishing, user_ip) VALUES (%s, %s, %s)",
+                    (url, is_phish, request.remote_addr)
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
+            except Exception as db_error:
+                app.logger.error(f"Erreur DB: {db_error}")
+            
             return render_template('results.html', url=url, is_phishing=is_phish)
             
         except Exception as e:
@@ -172,6 +270,82 @@ def detect():
             return render_template('detect.html', error='Une erreur est survenue lors de l\'analyse.')
     
     return render_template('detect.html')
+
+@app.route('/quiz')
+def quiz():
+    return render_template('quiz.html', questions=QUIZ_QUESTIONS)
+
+@app.route('/submit-quiz', methods=['POST'])
+def submit_quiz():
+    try:
+        score = 0
+        user_answers = request.form
+        
+        for question in QUIZ_QUESTIONS:
+            q_id = str(question['id'])
+            if q_id in user_answers and int(user_answers[q_id]) == question['correct_answer']:
+                score += 1
+        
+        # Sauvegarde du résultat du quiz
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO quiz_results (user_ip, score, total_questions) VALUES (%s, %s, %s)",
+                (request.remote_addr, score, len(QUIZ_QUESTIONS))
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as db_error:
+            app.logger.error(f"Erreur DB quiz: {db_error}")
+        
+        return render_template('quiz_results.html', 
+                             score=score, 
+                             total=len(QUIZ_QUESTIONS),
+                             questions=QUIZ_QUESTIONS,
+                             user_answers=user_answers)
+    
+    except Exception as e:
+        app.logger.error(f"Erreur quiz: {str(e)}")
+        return redirect(url_for('quiz'))
+
+@app.route('/stats')
+def stats():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Statistiques des soumissions
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_submissions,
+                SUM(CASE WHEN is_phishing THEN 1 ELSE 0 END) as phishing_count,
+                AVG(CASE WHEN is_phishing THEN 1 ELSE 0 END) * 100 as phishing_percentage
+            FROM url_submissions
+        """)
+        url_stats = cursor.fetchone()
+        
+        # Statistiques des quiz
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_quizzes,
+                AVG(score) as avg_score,
+                MAX(score) as max_score
+            FROM quiz_results
+        """)
+        quiz_stats = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return render_template('stats.html',
+                             url_stats=url_stats,
+                             quiz_stats=quiz_stats)
+                             
+    except Exception as e:
+        app.logger.error(f"Erreur stats: {str(e)}")
+        return render_template('stats.html', error="Impossible de charger les statistiques")
 
 # Route API SÉCURISÉE
 @app.route('/api/detect', methods=['POST'])
@@ -198,6 +372,20 @@ def api_detect():
         # Analyse
         is_phish = is_phishing(url)
         
+        # Sauvegarde en base de données
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO url_submissions (url, is_phishing, user_ip) VALUES (%s, %s, %s)",
+                (url, is_phish, request.remote_addr)
+            )
+            conn.commit()
+            cursor.close()
+            conn.close()
+        except Exception as db_error:
+            app.logger.error(f"Erreur DB API: {db_error}")
+        
         return jsonify({
             'url': url, 
             'is_phishing': is_phish,
@@ -207,6 +395,10 @@ def api_detect():
     except Exception as e:
         app.logger.error(f"Erreur API: {str(e)}")
         return jsonify({'error': 'Un problème est survenu lors de l\'analyse.'}), 500
+
+# Initialisation au démarrage
+with app.app_context():
+    init_db()
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=5000)
