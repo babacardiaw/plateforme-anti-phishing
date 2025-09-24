@@ -43,3 +43,15 @@ source venv/bin/activate
 
 # Installer les dépendances
 pip install -r requirements.txt
+
+## 🌐 Liens Importants
+
+### **Application en Ligne (Démo)**
+🔗 **URL Render :** https://plateforme-anti-phishing.onrender.com
+
+### **Code Source**
+🔗 **GitHub :** https://github.com/babacardiaw/plateforme-anti-phishing
+
+### **Accès**
+- L'application est déployée et fonctionnelle sur Render
+- Le code source complet est disponible sur GitHub
